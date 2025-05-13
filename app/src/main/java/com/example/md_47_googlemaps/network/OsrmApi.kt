@@ -7,10 +7,10 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface OsrmApi {
-    @GET("route/v1/driving/{start};{end}")
+    @GET("route/v1/foot/{start};{end}")
     suspend fun getRoute(
         @Path("start") start: String,
-        @Path("start") end: String,
+        @Path("end") end: String,
         @Query("overview") overview: String = "full"
     ) : Response<OsrmResponse>
 }

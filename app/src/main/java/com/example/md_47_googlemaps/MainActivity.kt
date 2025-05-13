@@ -137,14 +137,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun drawRoute(start: LatLng, end: LatLng) {
+        val apiObject = RetrofitProvider.getInstance()
+            .create(OsrmApi::class.java)
         GlobalScope.launch(Dispatchers.IO) {
-            val apiObject = RetrofitProvider.getInstance()
-                .create(OsrmApi::class.java)
-
             val response = apiObject.getRoute(
                 start.asString(),
                 end.asString()
             )
+            Log.d("OsrmResponse", response.body().toString());
+            Log.d("OsrmReq", response.raw().toString());
             response.body()?.let {
                 val polyline = it.routes[0].geometry
                 val decodedPolyline = PolyUtil.decode(polyline)
@@ -153,8 +154,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                     googleMap.addPolyline(
                         PolylineOptions()
                             .addAll(decodedPolyline)
-                            .color(Color.CYAN)
-                            .width(5f)
+                            .color(Color.RED)
+                            .width(15f)
                     )
                 }
             }
