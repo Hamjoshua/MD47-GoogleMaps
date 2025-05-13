@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import com.example.md_47_googlemaps.databinding.ActivityMainBinding
 import com.example.md_47_googlemaps.extensions.asString
 import com.example.md_47_googlemaps.network.OsrmApi
@@ -78,6 +79,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 ::toMyLocation
             )
         }
+
+        binding.clearPathBtn.setOnClickListener{
+            clearPath()
+        }
+        binding.clearPathBtn.isVisible = false
     }
 
     override fun onMapReady(p0: GoogleMap) {
@@ -125,6 +131,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             // Если выбрано 2 точки — строим маршрут
             if (selectedPoints.size == 2) {
                 drawRoute(selectedPoints[0], selectedPoints[1])
+                binding.clearPathBtn.isVisible = true
             }
         }
     }
@@ -154,6 +161,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
+    fun clearPath(){
+        selectedPoints.clear()
+        googleMap.clear()
+        binding.clearPathBtn.isVisible = false;
+    }
 
     fun toMyLocation() {
         if (ActivityCompat.checkSelfPermission(
