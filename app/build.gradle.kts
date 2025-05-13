@@ -57,6 +57,14 @@ dependencies {
 
     // geo
     implementation("com.google.android.gms:play-services-maps:19.2.0")
+    implementation("com.google.maps.android:android-maps-utils:0.5")
+
+    // для работы с API
+    implementation("com.squareup.retrofit2:converter-gson:2.6.0")
+    implementation("com.google.code.gson:gson:2.11.0")
+
+    // Для сохранения текущего прогресса
+    implementation("androidx.datastore:datastore-preferences:1.1.6")
 }
 
 
