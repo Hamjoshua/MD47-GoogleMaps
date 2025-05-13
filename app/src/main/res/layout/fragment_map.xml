@@ -14,6 +14,18 @@
 
     </fragment>
 
+    <TextView
+        android:id="@+id/loadingTxt"
+        app:layout_constraintTop_toTopOf="parent"
+        android:text="Загрузка..."
+        android:textSize="20sp"
+        android:textColor="@color/black"
+        android:textAlignment="center"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+    </TextView>
+
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"

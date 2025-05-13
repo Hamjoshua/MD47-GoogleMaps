@@ -50,6 +50,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val _isRouteReady = MutableLiveData<Boolean>(false)
     val isRouteReady: LiveData<Boolean> = _isRouteReady
 
+    private val _isLoading = MutableLiveData<Boolean>(false)
+    val isLoading: LiveData<Boolean> = _isLoading
+
     companion object DataStoreKeys {
         val LAST_LONG = doublePreferencesKey("last_longitude") // долгота
         val LAST_LAT = doublePreferencesKey("last_latitude") // широта
@@ -83,7 +86,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toMyLocation() {
         if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            Log.d("MyLocation", "Doing stuff")
             if (ActivityCompat.checkSelfPermission(
                     getApplication<Application>(),
                     Manifest.permission.ACCESS_FINE_LOCATION
@@ -92,12 +94,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     Manifest.permission.ACCESS_COARSE_LOCATION
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
+                Log.d("Locator", "Permissions not granted")
+
                 return
             }
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 location?.let {
+                    Log.d("Locator", "Locate to position")
                     val myLocation = LatLng(it.latitude, it.longitude)
-                    googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 17f))
+                    moveToPoint(myLocation, 17f)
                 }
             }
         } else {
@@ -136,14 +141,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             .create(OsrmApi::class.java)
         viewModelScope.launch {
             try {
+                _isLoading.value = true;
                 val response = withContext(Dispatchers.IO) {
                     apiObject.getRoute(
                         start.asString(),
                         end.asString()
                     )
                 }
-                Log.d("OsrmResponse", response.body().toString());
-                Log.d("OsrmReq", response.raw().toString());
                 if(response.isSuccessful){
                     response.body()?.let {
                         if(it.routes[0].distance == 0f){
@@ -155,13 +159,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         val polyline = it.routes[0].geometry
                         val decodedPolyline = PolyUtil.decode(polyline)
                         withContext(Dispatchers.Main) {
-                            googleMap.addPolyline(
-                                PolylineOptions()
-                                    .addAll(decodedPolyline)
-                                    .color(Color.RED)
-                                    .width(15f)
-                            )
-
+                            drawPolyline(decodedPolyline)
                             _isRouteReady.value = true
                             _toastMessage.value = "Маршрут построен"
                         }
@@ -176,9 +174,23 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 _toastMessage.value = "Ошибка сети: ${e.message}"
                 Log.e("OsrmNetwork", "Network error", e)
                 clearPath()
+            } catch(e: Exception) {
+                _toastMessage.value = "Непредвиденная ошибка"
+                Log.e("OsrmException", "Unexpected", e)
+            } finally {
+                _isLoading.value = false
             }
 
         }
+    }
+
+    fun drawPolyline(decodedPolyline : List<LatLng>){
+        googleMap.addPolyline(
+            PolylineOptions()
+                .addAll(decodedPolyline)
+                .color(Color.RED)
+                .width(15f)
+        )
     }
 
     fun clearPath() {
