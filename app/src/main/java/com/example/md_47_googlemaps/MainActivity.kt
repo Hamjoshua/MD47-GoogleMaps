@@ -7,12 +7,21 @@ import android.graphics.Color
 import android.location.LocationManager
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.preference.PreferenceDataStore
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.doublePreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.lifecycleScope
 import com.example.md_47_googlemaps.databinding.ActivityMainBinding
 import com.example.md_47_googlemaps.extensions.asString
 import com.example.md_47_googlemaps.network.OsrmApi
@@ -36,7 +45,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var binding: ActivityMainBinding
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationManager: LocationManager
+    private val Context.dataStore: DataStore<Preferences>
+            by preferencesDataStore(name = "map_settings")
     private var selectedPoints = mutableListOf<LatLng>()
+
+    companion object DataStoreKeys {
+        val LAST_LONG = doublePreferencesKey("last_longitude") // долгота
+        val LAST_LAT = doublePreferencesKey("last_latitude") // широта
+        val LAST_ZOOM = floatPreferencesKey("last_zoom")
+    }
 
     private val requestPermissionLauncher =
         registerForActivityResult(
@@ -49,6 +66,24 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
             }
         }
+
+    suspend fun setPosition() {
+        dataStore.edit {
+            it[LAST_LONG] = googleMap.cameraPosition.target.longitude
+            it[LAST_LAT] = googleMap.cameraPosition.target.latitude
+            it[LAST_ZOOM] = googleMap.cameraPosition.zoom
+        }
+    }
+
+    suspend fun loadPosition() {
+        dataStore.edit {
+            val longitude = it[LAST_LONG]
+            val latitude = it[LAST_LAT]
+            val zoom = it[LAST_ZOOM]
+
+            moveToPoint(longitude!!, latitude!!, zoom!!)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,7 +115,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             )
         }
 
-        binding.clearPathBtn.setOnClickListener{
+        binding.clearPathBtn.setOnClickListener {
             clearPath()
         }
         binding.clearPathBtn.isVisible = false
@@ -89,8 +124,19 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(p0: GoogleMap) {
         googleMap = p0
 
+        lifecycleScope.launch {
+            loadPosition()
+            return@launch
+        }
+
         googleMap.setOnMapLongClickListener { latLong ->
             onLongTap(latLong)
+        }
+
+        googleMap.setOnCameraIdleListener{
+            lifecycleScope.launch {
+                setPosition()
+            }
         }
     }
 
@@ -120,7 +166,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     fun moveToPostOffice() {
         val postOfficeCoords = LatLng(55.354993, 86.085805)
-        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(postOfficeCoords, 17f))
+        moveToPoint(postOfficeCoords, 17f)
+    }
+
+    fun moveToPoint(longitude: Double, latitude: Double, zoom: Float) {
+        val coords = LatLng(latitude, longitude)
+        moveToPoint(coords, zoom)
+    }
+
+    fun moveToPoint(coords: LatLng, zoom: Float) {
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(coords, zoom))
     }
 
     fun onLongTap(latLng: LatLng) {
@@ -162,7 +217,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    fun clearPath(){
+    fun clearPath() {
         selectedPoints.clear()
         googleMap.clear()
         binding.clearPathBtn.isVisible = false;
