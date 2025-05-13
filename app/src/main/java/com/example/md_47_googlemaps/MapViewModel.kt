@@ -7,9 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.LocationManager
 import android.util.Log
-import android.widget.Toast
 import androidx.core.app.ActivityCompat
-import androidx.core.view.isVisible
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.doublePreferencesKey
@@ -21,7 +19,6 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import com.example.md_47_googlemaps.extensions.asString
 import com.example.md_47_googlemaps.network.OsrmApi
@@ -30,18 +27,16 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
-import com.google.android.gms.maps.OnMapReadyCallback
-import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.maps.android.PolyUtil
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okio.IOException
 
-class MapViewModel(val application: Application) : AndroidViewModel(application),
-    OnMapReadyCallback {
+class MapViewModel(application: Application) : AndroidViewModel(application) {
     private lateinit var googleMap: GoogleMap
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationManager: LocationManager
@@ -51,6 +46,9 @@ class MapViewModel(val application: Application) : AndroidViewModel(application)
 
     private val _toastMessage = MutableLiveData<String>()
     val toastMessage: LiveData<String> = _toastMessage
+
+    private val _isRouteReady = MutableLiveData<Boolean>(false)
+    val isRouteReady: LiveData<Boolean> = _isRouteReady
 
     companion object DataStoreKeys {
         val LAST_LONG = doublePreferencesKey("last_longitude") // долгота
@@ -64,7 +62,7 @@ class MapViewModel(val application: Application) : AndroidViewModel(application)
     }
 
     suspend fun setPosition() {
-        application.dataStore.edit {
+        getApplication<Application>().dataStore.edit {
             it[LAST_LONG] = googleMap.cameraPosition.target.longitude
             it[LAST_LAT] = googleMap.cameraPosition.target.latitude
             it[LAST_ZOOM] = googleMap.cameraPosition.zoom
@@ -72,7 +70,7 @@ class MapViewModel(val application: Application) : AndroidViewModel(application)
     }
 
     suspend fun loadPosition() {
-        application.dataStore.edit {
+        getApplication<Application>().dataStore.edit {
             val longitude = it[LAST_LONG]
             val latitude = it[LAST_LAT]
             val zoom = it[LAST_ZOOM]
@@ -81,14 +79,14 @@ class MapViewModel(val application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun toMyLocation(){
+    fun toMyLocation() {
         if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             Log.d("MyLocation", "Doing stuff")
             if (ActivityCompat.checkSelfPermission(
-                    application,
+                    getApplication<Application>(),
                     Manifest.permission.ACCESS_FINE_LOCATION
                 ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-                    application,
+                    getApplication<Application>(),
                     Manifest.permission.ACCESS_COARSE_LOCATION
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
@@ -134,34 +132,60 @@ class MapViewModel(val application: Application) : AndroidViewModel(application)
     private fun drawRoute(start: LatLng, end: LatLng) {
         val apiObject = RetrofitProvider.getInstance()
             .create(OsrmApi::class.java)
-        viewModelScope.launch(Dispatchers.IO) {
-            val response = apiObject.getRoute(
-                start.asString(),
-                end.asString()
-            )
-            Log.d("OsrmResponse", response.body().toString());
-            Log.d("OsrmReq", response.raw().toString());
-            response.body()?.let {
-                val polyline = it.routes[0].geometry
-                val decodedPolyline = PolyUtil.decode(polyline)
+        viewModelScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    apiObject.getRoute(
+                        start.asString(),
+                        end.asString()
+                    )
+                }
+                Log.d("OsrmResponse", response.body().toString());
+                Log.d("OsrmReq", response.raw().toString());
+                if(response.isSuccessful){
+                    response.body()?.let {
+                        if(it.routes[0].distance == 0f){
+                            _toastMessage.value = "Маршрут не найден";
+                            clearPath()
+                            return@let
+                        }
 
-                googleMap.addPolyline(
-                    PolylineOptions()
-                        .addAll(decodedPolyline)
-                        .color(Color.RED)
-                        .width(15f)
-                )
+                        val polyline = it.routes[0].geometry
+                        val decodedPolyline = PolyUtil.decode(polyline)
+                        withContext(Dispatchers.Main) {
+                            googleMap.addPolyline(
+                                PolylineOptions()
+                                    .addAll(decodedPolyline)
+                                    .color(Color.RED)
+                                    .width(15f)
+                            )
 
+                            _isRouteReady.value = true
+                            _toastMessage.value = "Маршрут построен"
+                        }
+                    }
+                }
+                else{
+                    _toastMessage.value = "Маршрут не найден";
+                    clearPath()
+                }
+
+            } catch (e: IOException) {
+                _toastMessage.value = "Ошибка сети: ${e.message}"
+                Log.e("OsrmNetwork", "Network error", e)
+                clearPath()
             }
+
         }
     }
 
     fun clearPath() {
         selectedPoints.clear()
         googleMap.clear()
+        _isRouteReady.value = false
     }
 
-    override fun onMapReady(p0: GoogleMap) {
+    fun initGoogle(p0: GoogleMap) {
         googleMap = p0
 
         viewModelScope.launch {
@@ -181,7 +205,7 @@ class MapViewModel(val application: Application) : AndroidViewModel(application)
     }
 }
 
-class MapViewModelFactory(private val app: Application) : ViewModelProvider.Factory {
+class MapViewModelFactory(val app: Application) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return MapViewModel(app) as T
     }
