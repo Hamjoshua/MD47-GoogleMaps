@@ -75,7 +75,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             val latitude = it[LAST_LAT]
             val zoom = it[LAST_ZOOM]
 
-            moveToPoint(longitude!!, latitude!!, zoom!!)
+            longitude?.let {
+                moveToPoint(it, latitude!!, zoom!!)
+            }
         }
     }
 
